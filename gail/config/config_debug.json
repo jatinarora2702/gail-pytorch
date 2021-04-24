@@ -1,0 +1,8 @@
+{
+  "model_name": "gail-debug",
+  "env_id": "cartpole",
+  "resume": null,
+  "out_root": "../out",
+  "wandb_mode": "dryrun",
+  "seed": 42
+}

@@ -1,0 +1,4 @@
+**/wandb/
+*.egg-info/
+**/__pycache__/
+.idea/
