@@ -25,14 +25,14 @@ class ModelArguments:
     num_d_epochs: int = field(default=2, metadata={"help": "training epochs of discriminator model"})
 
     out_root: str = field(default="../out", metadata={"help": "outputs root directory"})
-    expert_trajectory_dir: str = field(default="../trajectory", metadata={"help": "expert tranjectory dir"})
     env_id: str = field(default="cartpole", metadata={"help": "simulation environment identifier"})
     wandb_mode: str = field(default="run", metadata={"help": "can enable/disable wandb online sync (run/dryrun)"})
     seed: int = field(default=42, metadata={"help": "random seed for reproducibility of results"})
     device: str = field(default="cuda:0", metadata={"help": "device (cpu|cuda:0)"})
 
     def __post_init__(self):
-        self.checkpoint_dir = os.path.join(self.out_root, self.env_id, self.model_name)
+        self.env_root = os.path.join(self.out_root, self.env_id)
+        self.checkpoint_dir = os.path.join(self.env_root, self.model_name)
         self.wandb_dir = self.checkpoint_dir
 
     def to_dict(self):

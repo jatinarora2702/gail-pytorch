@@ -61,7 +61,7 @@ class PpoExecutor:
         logger.info("args: {0}".format(self.args.to_json_string()))
         set_all_seeds(self.args.seed)
 
-        self.env = gym.make("CartPole-v0")
+        self.env = gym.make(self.args.env_id)
         self.env.seed(self.args.seed)
         self.args.state_dim = self.env.observation_space.shape[0]
         self.args.num_actions = self.env.action_space.n
@@ -192,6 +192,6 @@ def main(args):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="PPO for sampling expert trajectories")
-    ap.add_argument("--config", default="config/config_ppo.json", help="config json file")
+    ap.add_argument("--config", default="config/CartPole-v0/config_ppo.json", help="config json file")
     ap = ap.parse_args()
     main(ap)

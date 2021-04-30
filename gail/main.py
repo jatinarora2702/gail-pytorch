@@ -80,7 +80,7 @@ class GailExecutor:
         logger.info("args: {0}".format(self.args.to_json_string()))
         set_all_seeds(self.args.seed)
 
-        self.env = gym.make("CartPole-v0")
+        self.env = gym.make(self.args.env_id)
         self.env.seed(self.args.seed)
         self.args.state_dim = self.env.observation_space.shape[0]
         self.args.num_actions = self.env.action_space.n
@@ -98,9 +98,9 @@ class GailExecutor:
         self.mse_loss = nn.MSELoss()
         self.bce_loss = nn.BCELoss()
 
-        expert_states = np.genfromtxt("{0}/observations.csv".format(self.args.expert_trajectory_dir))
+        expert_states = np.genfromtxt("{0}/trajectory/states.csv".format(self.args.env_root))
         expert_states = torch.tensor(expert_states, dtype=torch.float32, device=self.args.device)
-        expert_actions = np.genfromtxt("{0}/actions.csv".format(self.args.expert_trajectory_dir), dtype=np.int32)
+        expert_actions = np.genfromtxt("{0}/trajectory/actions.csv".format(self.args.env_root), dtype=np.int32)
         expert_actions = torch.tensor(expert_actions, dtype=torch.int64, device=self.args.device)
         expert_actions = torch.eye(self.args.num_actions)[expert_actions].to(self.args.device)
         self.expert_state_actions = torch.cat([expert_states, expert_actions], dim=1)
@@ -154,7 +154,6 @@ class GailExecutor:
         with torch.no_grad():
             d_rewards = torch.log(self.discriminator(agent_state_actions))
 
-        # d_rewards = np.reshape(d_rewards, newshape=[-1]).astype(dtype=np.float32)   # check!!
         rewards = []
         cumulative_discounted_reward = 0.
         for i in range(len(d_rewards) - 1, -1, -1):
@@ -239,6 +238,6 @@ def main(args):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="GAIL model")
-    ap.add_argument("--config", default="config/config_gail.json", help="config json file")
+    ap.add_argument("--config", default="config/CartPole-v0/config_gail.json", help="config json file")
     ap = ap.parse_args()
     main(ap)
