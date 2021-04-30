@@ -58,11 +58,11 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
         self.args = args
         self.model = nn.Sequential(
-            nn.Linear(self.args.state_dim, 64),
+            nn.Linear(self.args.state_dim + self.args.num_actions, 64),
             nn.Tanh(),
             nn.Linear(64, 64),
             nn.Tanh(),
-            nn.Linear(64, self.args.num_actions),
+            nn.Linear(64, 1),
             nn.Sigmoid()
         )
 
@@ -137,14 +137,15 @@ class GailExecutor:
         prev_states = torch.stack(self.states, dim=0).to(self.args.device)
         prev_actions = torch.stack(self.actions, dim=0).to(self.args.device)
         prev_log_prob_actions = torch.stack(self.log_prob_actions, dim=0).to(self.args.device)
-        agent_state_actions = torch.cat([prev_states, prev_actions], dim=1)
+        prev_actions_one_hot = torch.eye(self.args.num_actions)[prev_actions.long()].to(self.args.device)
+        agent_state_actions = torch.cat([prev_states, prev_actions_one_hot], dim=1)
 
         for ep in range(self.args.num_d_epochs):
             expert_prob = self.discriminator(self.expert_state_actions)
             agent_prob = self.discriminator(agent_state_actions)
             term1 = self.bce_loss(agent_prob, torch.ones((agent_state_actions.shape[0], 1), device=self.args.device))
-            term2 = self.bce_loss(expert_prob, torch.ones((self.expert_state_actions.shape[0], 1),
-                                                          device=self.args.device))
+            term2 = self.bce_loss(expert_prob, torch.zeros((self.expert_state_actions.shape[0], 1),
+                                                           device=self.args.device))
             loss = term1 + term2
             self.d_optimizer.zero_grad()
             loss.backward()
@@ -232,12 +233,12 @@ def main(args):
     model_args = parse_config(ModelArguments, args.config)
     executor = GailExecutor(model_args)
     if not executor.args.train:
-        executor.load(executor.args.resume)
+        executor.load(executor.args.checkpoint_dir)
     executor.run()
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="GAIL model")
-    ap.add_argument("--config", default="config/config_debug.json", help="config json file")
+    ap.add_argument("--config", default="config/config_gail.json", help="config json file")
     ap = ap.parse_args()
     main(ap)

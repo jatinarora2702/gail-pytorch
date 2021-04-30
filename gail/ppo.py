@@ -192,6 +192,6 @@ def main(args):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="PPO for sampling expert trajectories")
-    ap.add_argument("--config", default="config/config_debug.json", help="config json file")
+    ap.add_argument("--config", default="config/config_ppo.json", help="config json file")
     ap = ap.parse_args()
     main(ap)
