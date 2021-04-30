@@ -8,4 +8,9 @@ Ho, Jonathan, and Stefano Ermon. "[Generative adversarial imitation learning.](h
 ```commandline
 pip install -r requirements.txt
 pip install -e .
+
+[optional] conda install swig
+[optional] pip install box2d-py
 ```
+
+Note: ```swig``` and ```box2d-py``` are required only by ```LunarLander-v2``` environment.
