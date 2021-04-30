@@ -18,6 +18,7 @@ class ModelArguments:
     lr_actor: float = field(default=0.0003, metadata={"help": "actor model learning rate"})
     lr_critic: float = field(default=0.001, metadata={"help": "critic model learning rate"})
     lr_discriminator: float = field(default=0.001, metadata={"help": "discriminator model learning rate"})
+    num_trajectories: int = field(default=10, metadata={"help": "# expert traj.s to sample from pretrained PPO model"})
     train_steps: int = field(default=1e5, metadata={"help": "maximum training time steps"})
     max_episode_len: int = field(default=400, metadata={"help": "maximum episode length"})
     update_steps: int = field(default=1600, metadata={"help": "frequency of model update"})

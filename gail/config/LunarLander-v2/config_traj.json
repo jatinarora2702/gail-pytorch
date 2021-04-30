@@ -1,0 +1,12 @@
+{
+  "env_id": "LunarLander-v2",
+  "model_name": "ppo",
+  "train": false,
+  "num_trajectories": 25,
+  "max_episode_len": 300,
+  "out_root": "../out",
+  "expert_trajectory_dir": "../trajectory",
+  "wandb_mode": "dryrun",
+  "seed": 42,
+  "device": "cuda:0"
+}
