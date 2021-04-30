@@ -6,7 +6,6 @@ import gym
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.distributions import Categorical
 
 from gail.model_args import ModelArguments
@@ -19,27 +18,35 @@ class PolicyModel(nn.Module):
     def __init__(self, args):
         super(PolicyModel, self).__init__()
         self.args = args
-        self.actor = nn.Linear(self.args.state_dim, self.args.num_actions)
-        self.critic = nn.Linear(self.args.state_dim, 1)
+        self.actor = nn.Sequential(
+            nn.Linear(self.args.state_dim, 64),
+            nn.Tanh(),
+            nn.Linear(64, 64),
+            nn.Tanh(),
+            nn.Linear(64, self.args.num_actions),
+            nn.Softmax(dim=-1)
+        )
+        self.critic = nn.Sequential(
+            nn.Linear(self.args.state_dim, 64),
+            nn.Tanh(),
+            nn.Linear(64, 64),
+            nn.Tanh(),
+            nn.Linear(64, 1)
+        )
 
     def act(self, state):
-        x = self.actor(state)
-        action_prob = F.softmax(x, dim=-1)
+        action_prob = self.actor(state)
         action_dist = Categorical(action_prob)
         action = action_dist.sample()
         action_log_prob = action_dist.log_prob(action)
         return action, action_log_prob
 
     def evaluate(self, state, action):
-        x = self.actor(state)
-        action_prob = F.softmax(x, dim=-1)
+        action_prob = self.actor(state)
         action_dist = Categorical(action_prob)
         action_log_prob = action_dist.log_prob(action)
         entropy = action_dist.entropy()
-
-        x = self.critic(state)
-        value = F.tanh(x)
-
+        value = self.critic(state)
         return value, action_log_prob, entropy
 
     def forward(self):
@@ -50,11 +57,17 @@ class Discriminator(nn.Module):
     def __init__(self, args):
         super(Discriminator, self).__init__()
         self.args = args
-        self.lin = nn.Linear(self.args.state_dim + self.args.num_actions, 1)
+        self.model = nn.Sequential(
+            nn.Linear(self.args.state_dim, 64),
+            nn.Tanh(),
+            nn.Linear(64, 64),
+            nn.Tanh(),
+            nn.Linear(64, self.args.num_actions),
+            nn.Sigmoid()
+        )
 
     def forward(self, state_action):
-        x = self.lin(state_action)
-        reward = F.sigmoid(x)
+        reward = self.model(state_action)
         return reward
 
 
@@ -96,7 +109,13 @@ class GailExecutor:
         self.actions = []
         self.log_prob_actions = []
         self.rewards = []
-        self.values = []
+        self.is_terminal = []
+
+    def reset_buffers(self):
+        self.states = []
+        self.actions = []
+        self.log_prob_actions = []
+        self.rewards = []
         self.is_terminal = []
 
     def take_action(self, state):
@@ -137,11 +156,11 @@ class GailExecutor:
         # d_rewards = np.reshape(d_rewards, newshape=[-1]).astype(dtype=np.float32)   # check!!
         rewards = []
         cumulative_discounted_reward = 0.
-        for i in range(len(d_rewards) - 1, 0, -1):
+        for i in range(len(d_rewards) - 1, -1, -1):
             cumulative_discounted_reward = d_rewards[i] + self.args.discount_factor * cumulative_discounted_reward
             rewards.append(cumulative_discounted_reward)
 
-        rewards = torch.tensor(rewards, dtype=torch.float64, device=self.args.device)
+        rewards = torch.tensor(rewards, dtype=torch.float32, device=self.args.device)
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
 
         for ep in range(self.args.num_epochs):
@@ -158,41 +177,62 @@ class GailExecutor:
             self.optimizer.step()
 
         self.policy_old.load_state_dict(self.policy.state_dict())
-
-        self.states = []
-        self.actions = []
-        self.log_prob_actions = []
-        self.rewards = []
-        self.is_terminal = []
+        self.reset_buffers()
 
     def run(self):
         t = 1
+        success_count = 0
+        finish = False
         while t <= self.args.train_steps:
             state = self.env.reset()
             total_reward = 0
+            done = False
             for ep in range(self.args.max_episode_len):
                 state, reward, done = self.take_action(state)
                 total_reward += reward
-                if t % self.args.update_steps == 0:
+                if self.args.train and t % self.args.update_steps == 0:
+                    logger.info("updating model")
                     self.update()
-                if t % self.args.checkpoint_steps == 0:
-                    self.save("../out/cartpole")
+                if self.args.train and t % self.args.checkpoint_steps == 0:
+                    logger.info("saving checkpoint")
+                    self.save(self.args.checkpoint_dir)
+                t += 1
                 if done:
+                    if total_reward >= 195.0:
+                        success_count += 1
+                        if success_count >= 100:
+                            logger.info("model trained. saving checkpoint")
+                            self.save(self.args.checkpoint_dir)
+                            finish = True
+                    else:
+                        success_count = 0
+                    logger.info("iter: {0} | success: {1} | reward: {2:.1f}".format(t, success_count, total_reward))
+                    if not self.args.train:
+                        self.reset_buffers()
                     break
-            logger.info("total reward: {0:.4f}".format(total_reward))
+            if not done:
+                logger.info("truncated at horizon")
+            if finish:
+                break
 
-    def save(self, checkpoint_location):
-        torch.save(self.policy_old.state_dict(), checkpoint_location)
+    def save(self, checkpoint_dir):
+        torch.save(self.policy_old.state_dict(), "{0}/policy.ckpt".format(checkpoint_dir))
+        torch.save(self.discriminator.state_dict(), "{0}/discriminator.ckpt".format(checkpoint_dir))
 
-    def load(self, checkpoint_location):
-        self.policy_old.load_save_dict(torch.load(checkpoint_location, map_location=lambda x, y: x))
-        self.policy.load_save_dict(self.policy_old.state_dict())
+    def load(self, checkpoint_dir):
+        policy_model_path = "{0}/policy.ckpt".format(checkpoint_dir)
+        self.policy_old.load_state_dict(torch.load(policy_model_path, map_location=lambda x, y: x))
+        self.policy.load_state_dict(self.policy_old.state_dict())
+        discriminator_model_path = "{0}/discriminator.ckpt".format(checkpoint_dir)
+        self.discriminator.load_state_dict(torch.load(discriminator_model_path, map_location=lambda x, y: x))
 
 
 def main(args):
     setup_logging()
     model_args = parse_config(ModelArguments, args.config)
     executor = GailExecutor(model_args)
+    if not executor.args.train:
+        executor.load(executor.args.resume)
     executor.run()
 
 

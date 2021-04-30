@@ -31,7 +31,7 @@ class PolicyModel(nn.Module):
             nn.Linear(64, 64),
             nn.Tanh(),
             nn.Linear(64, 1)
-        )  # TODO: check: whether 1 or 2(num_actions)?
+        )
 
     def act(self, state):
         action_prob = self.actor(state)
@@ -105,6 +105,10 @@ class PpoExecutor:
         return next_state, reward, done
 
     def update(self):
+        prev_states = torch.stack(self.states, dim=0).to(self.args.device)
+        prev_actions = torch.stack(self.actions, dim=0).to(self.args.device)
+        prev_log_prob_actions = torch.stack(self.log_prob_actions, dim=0).to(self.args.device)
+
         rewards = []
         cumulative_discounted_reward = 0.
         for i in range(len(self.rewards) - 1, -1, -1):
@@ -115,10 +119,6 @@ class PpoExecutor:
 
         rewards = torch.tensor(rewards, dtype=torch.float32, device=self.args.device)
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
-
-        prev_states = torch.stack(self.states, dim=0).to(self.args.device)
-        prev_actions = torch.stack(self.actions, dim=0).to(self.args.device)
-        prev_log_prob_actions = torch.stack(self.log_prob_actions, dim=0).to(self.args.device)
 
         for ep in range(self.args.num_epochs):
             values, log_prob_actions, entropy = self.policy.evaluate(prev_states, prev_actions)
@@ -152,14 +152,14 @@ class PpoExecutor:
                     self.update()
                 if self.args.train and t % self.args.checkpoint_steps == 0:
                     logger.info("saving checkpoint")
-                    self.save("../out/cartpole/model.ckpt")
+                    self.save(self.args.checkpoint_dir)
                 t += 1
                 if done:
                     if total_reward >= 195.0:
                         success_count += 1
                         if success_count >= 100:
                             logger.info("model trained. saving checkpoint")
-                            self.save("../out/cartpole/model.ckpt")
+                            self.save(self.args.checkpoint_dir)
                             finish = True
                     else:
                         success_count = 0
@@ -172,11 +172,12 @@ class PpoExecutor:
             if finish:
                 break
 
-    def save(self, checkpoint_location):
-        torch.save(self.policy_old.state_dict(), checkpoint_location)
+    def save(self, checkpoint_dir):
+        torch.save(self.policy_old.state_dict(), "{0}/policy.ckpt".format(checkpoint_dir))
 
-    def load(self, checkpoint_location):
-        self.policy_old.load_state_dict(torch.load(checkpoint_location, map_location=lambda x, y: x))
+    def load(self, checkpoint_dir):
+        policy_model_path = "{0}/policy.ckpt".format(checkpoint_dir)
+        self.policy_old.load_state_dict(torch.load(policy_model_path, map_location=lambda x, y: x))
         self.policy.load_state_dict(self.policy_old.state_dict())
 
 
@@ -185,7 +186,7 @@ def main(args):
     model_args = parse_config(ModelArguments, args.config)
     executor = PpoExecutor(model_args)
     if not executor.args.train:
-        executor.load("../out/cartpole/model.ckpt")
+        executor.load(executor.args.checkpoint_dir)
     executor.run()
 
 

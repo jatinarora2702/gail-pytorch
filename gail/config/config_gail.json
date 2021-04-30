@@ -1,5 +1,5 @@
 {
-  "model_name": "gail-debug",
+  "model_name": "gail",
   "env_id": "cartpole",
   "resume": null,
   "train": false,

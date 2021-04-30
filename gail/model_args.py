@@ -32,10 +32,8 @@ class ModelArguments:
     device: str = field(default="cuda:0", metadata={"help": "device (cpu|cuda:0)"})
 
     def __post_init__(self):
-        self.run_root = os.path.join(self.out_root, self.env_id, self.model_name)
-        if self.resume:
-            self.resume = os.path.join(self.run_root, "checkpoints", "checkpoint-{0}".format(self.resume))
-        self.wandb_dir = self.run_root
+        self.checkpoint_dir = os.path.join(self.out_root, self.env_id, self.model_name)
+        self.wandb_dir = self.checkpoint_dir
 
     def to_dict(self):
         """

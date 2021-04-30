@@ -1,0 +1,20 @@
+{
+  "model_name": "ppo",
+  "env_id": "cartpole",
+  "resume": null,
+  "train": false,
+  "discount_factor": 0.99,
+  "clip_eps": 0.2,
+  "lr_actor": 0.0003,
+  "lr_critic": 0.001,
+  "train_steps": 1e5,
+  "max_episode_len": 400,
+  "update_steps": 1600,
+  "checkpoint_steps": 2e4,
+  "num_epochs": 40,
+  "out_root": "../out",
+  "expert_trajectory_dir": "../trajectory",
+  "wandb_mode": "dryrun",
+  "seed": 42,
+  "device": "cuda:0"
+}
