@@ -12,6 +12,7 @@ class ModelArguments:
     model_name: str = field(default="gail", metadata={"help": "model identifier"})
     train: bool = field(default=True, metadata={"help": "do training. If set to False, we load existing model"})
     resume: Optional[str] = field(default=None, metadata={"help": "checkpoint to resume. Starts from scratch, if None"})
+    reward_threshold: float = field(default=195.0, metadata={"help": "cumulative reward threshold for win"})
     discount_factor: float = field(default=0.99, metadata={"help": "discount factor"})
     clip_eps: float = field(default=0.2, metadata={"help": "clipping epsilon in PPO loss"})
     lr_actor: float = field(default=0.0003, metadata={"help": "actor model learning rate"})
@@ -25,7 +26,7 @@ class ModelArguments:
     num_d_epochs: int = field(default=2, metadata={"help": "training epochs of discriminator model"})
 
     out_root: str = field(default="../out", metadata={"help": "outputs root directory"})
-    env_id: str = field(default="cartpole", metadata={"help": "simulation environment identifier"})
+    env_id: str = field(default="CartPole-v0", metadata={"help": "simulation environment identifier"})
     wandb_mode: str = field(default="run", metadata={"help": "can enable/disable wandb online sync (run/dryrun)"})
     seed: int = field(default=42, metadata={"help": "random seed for reproducibility of results"})
     device: str = field(default="cuda:0", metadata={"help": "device (cpu|cuda:0)"})

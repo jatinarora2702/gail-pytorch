@@ -198,7 +198,7 @@ class GailExecutor:
                     self.save(self.args.checkpoint_dir)
                 t += 1
                 if done:
-                    if total_reward >= 195.0:
+                    if total_reward >= self.args.reward_threshold:
                         success_count += 1
                         if success_count >= 100:
                             logger.info("model trained. saving checkpoint")
@@ -206,7 +206,7 @@ class GailExecutor:
                             finish = True
                     else:
                         success_count = 0
-                    logger.info("iter: {0} | success: {1} | reward: {2:.1f}".format(t, success_count, total_reward))
+                    logger.info("iter: {0} | reward: {1:.1f}".format(t, total_reward))
                     if not self.args.train:
                         self.reset_buffers()
                     break
@@ -238,6 +238,6 @@ def main(args):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="GAIL model")
-    ap.add_argument("--config", default="config/CartPole-v0/config_gail.json", help="config json file")
+    ap.add_argument("--config", default="config/LunarLander-v2/config_gail.json", help="config json file")
     ap = ap.parse_args()
     main(ap)
