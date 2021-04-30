@@ -238,6 +238,6 @@ def main(args):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="GAIL model")
-    ap.add_argument("--config", default="config/LunarLander-v2/config_gail.json", help="config json file")
+    ap.add_argument("--config", default="config/CartPole-v0/config_gail.json", help="config json file")
     ap = ap.parse_args()
     main(ap)
