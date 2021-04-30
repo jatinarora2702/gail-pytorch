@@ -61,17 +61,6 @@ class Discriminator(nn.Module):
 class GailExecutor:
     def __init__(self, args):
         self.args = args
-        self.discount_factor = 0.99
-        self.clip_eps = 0.2
-        self.lr_actor = 0.0003
-        self.lr_critic = 0.001
-        self.lr_discriminator = 0.001
-        self.train_steps = int(1e5)
-        self.max_episode_len = 400
-        self.update_steps = self.max_episode_len * 4
-        self.num_epochs = 40
-        self.num_d_epochs = 2
-        self.checkpoint_steps = int(2e4)
 
         os.environ["WANDB_MODE"] = self.args.wandb_mode
         set_wandb(self.args.wandb_dir)
@@ -89,10 +78,10 @@ class GailExecutor:
         self.discriminator = Discriminator(self.args).to(self.args.device)
 
         self.optimizer = torch.optim.Adam([
-            {"params": self.policy.actor.parameters(), "lr": self.lr_actor},
-            {"params": self.policy.critic.parameters(), "lr": self.lr_critic}
+            {"params": self.policy.actor.parameters(), "lr": self.args.lr_actor},
+            {"params": self.policy.critic.parameters(), "lr": self.args.lr_critic}
         ])
-        self.d_optimizer = torch.optim.Adam(self.discriminator.parameters(), lr=self.lr_discriminator)
+        self.d_optimizer = torch.optim.Adam(self.discriminator.parameters(), lr=self.args.lr_discriminator)
         self.mse_loss = nn.MSELoss()
         self.bce_loss = nn.BCELoss()
 
@@ -131,7 +120,7 @@ class GailExecutor:
         prev_log_prob_actions = torch.stack(self.log_prob_actions, dim=0).to(self.args.device)
         agent_state_actions = torch.cat([prev_states, prev_actions], dim=1)
 
-        for ep in range(self.num_d_epochs):
+        for ep in range(self.args.num_d_epochs):
             expert_prob = self.discriminator(self.expert_state_actions)
             agent_prob = self.discriminator(agent_state_actions)
             term1 = self.bce_loss(agent_prob, torch.ones((agent_state_actions.shape[0], 1), device=self.args.device))
@@ -149,17 +138,18 @@ class GailExecutor:
         rewards = []
         cumulative_discounted_reward = 0.
         for i in range(len(d_rewards) - 1, 0, -1):
-            cumulative_discounted_reward = d_rewards[i] + self.discount_factor * cumulative_discounted_reward
+            cumulative_discounted_reward = d_rewards[i] + self.args.discount_factor * cumulative_discounted_reward
             rewards.append(cumulative_discounted_reward)
 
         rewards = torch.tensor(rewards, dtype=torch.float64, device=self.args.device)
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
 
-        for ep in range(self.num_epochs):
+        for ep in range(self.args.num_epochs):
             values, log_prob_actions, entropy = self.policy.evaluate(prev_states, prev_actions)
             advantages = rewards - values.detach()
             imp_ratios = torch.exp(log_prob_actions - prev_log_prob_actions)
-            term1 = -torch.min(imp_ratios, torch.clamp(imp_ratios, 1 - self.clip_eps, 1 + self.clip_eps)) * advantages
+            clamped_imp_ratio = torch.clamp(imp_ratios, 1 - self.args.clip_eps, 1 + self.args.clip_eps)
+            term1 = -torch.min(imp_ratios, clamped_imp_ratio) * advantages
             term2 = 0.5 * self.mse_loss(values, rewards)
             term3 = -0.01 * entropy
             loss = term1 + term2 + term3
@@ -177,15 +167,15 @@ class GailExecutor:
 
     def run(self):
         t = 1
-        while t <= self.train_steps:
+        while t <= self.args.train_steps:
             state = self.env.reset()
             total_reward = 0
-            for ep in range(self.max_episode_len):
+            for ep in range(self.args.max_episode_len):
                 state, reward, done = self.take_action(state)
                 total_reward += reward
-                if t % self.update_steps == 0:
+                if t % self.args.update_steps == 0:
                     self.update()
-                if t % self.checkpoint_steps == 0:
+                if t % self.args.checkpoint_steps == 0:
                     self.save("../out/cartpole")
                 if done:
                     break

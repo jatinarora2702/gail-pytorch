@@ -5,7 +5,6 @@ import os
 import gym
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.distributions import Categorical
 
 from gail.model_args import ModelArguments
@@ -18,27 +17,35 @@ class PolicyModel(nn.Module):
     def __init__(self, args):
         super(PolicyModel, self).__init__()
         self.args = args
-        self.actor = nn.Linear(self.args.state_dim, self.args.num_actions)
-        self.critic = nn.Linear(self.args.state_dim, 1)  # check: whether 1 or 2(num_actions)?
+        self.actor = nn.Sequential(
+            nn.Linear(self.args.state_dim, 64),
+            nn.Tanh(),
+            nn.Linear(64, 64),
+            nn.Tanh(),
+            nn.Linear(64, self.args.num_actions),
+            nn.Softmax(dim=-1)
+        )
+        self.critic = nn.Sequential(
+            nn.Linear(self.args.state_dim, 64),
+            nn.Tanh(),
+            nn.Linear(64, 64),
+            nn.Tanh(),
+            nn.Linear(64, 1)
+        )  # TODO: check: whether 1 or 2(num_actions)?
 
     def act(self, state):
-        x = self.actor(state)
-        action_prob = F.softmax(x, dim=-1)
+        action_prob = self.actor(state)
         action_dist = Categorical(action_prob)
         action = action_dist.sample()
         action_log_prob = action_dist.log_prob(action)
         return action, action_log_prob
 
     def evaluate(self, state, action):
-        x = self.actor(state)
-        action_prob = F.softmax(x, dim=-1)
+        action_prob = self.actor(state)
         action_dist = Categorical(action_prob)
         action_log_prob = action_dist.log_prob(action)
         entropy = action_dist.entropy()
-
-        x = self.critic(state)
-        value = F.tanh(x)
-
+        value = self.critic(state)
         return value, action_log_prob, entropy
 
     def forward(self):
@@ -48,15 +55,6 @@ class PolicyModel(nn.Module):
 class PpoExecutor:
     def __init__(self, args):
         self.args = args
-        self.discount_factor = 0.99
-        self.clip_eps = 0.2
-        self.lr_actor = 0.0003
-        self.lr_critic = 0.001
-        self.train_steps = int(1e5)
-        self.max_episode_len = 400
-        self.update_steps = self.max_episode_len * 4
-        self.num_epochs = 40
-        self.checkpoint_steps = int(2e4)
 
         os.environ["WANDB_MODE"] = self.args.wandb_mode
         set_wandb(self.args.wandb_dir)
@@ -73,8 +71,8 @@ class PpoExecutor:
         self.policy_old.load_state_dict(self.policy.state_dict())
 
         self.optimizer = torch.optim.Adam([
-            {"params": self.policy.actor.parameters(), "lr": self.lr_actor},
-            {"params": self.policy.critic.parameters(), "lr": self.lr_critic}
+            {"params": self.policy.actor.parameters(), "lr": self.args.lr_actor},
+            {"params": self.policy.critic.parameters(), "lr": self.args.lr_critic}
         ])
         self.mse_loss = nn.MSELoss()
 
@@ -82,7 +80,13 @@ class PpoExecutor:
         self.actions = []
         self.log_prob_actions = []
         self.rewards = []
-        self.values = []
+        self.is_terminal = []
+
+    def reset_buffers(self):
+        self.states = []
+        self.actions = []
+        self.log_prob_actions = []
+        self.rewards = []
         self.is_terminal = []
 
     def take_action(self, state):
@@ -103,24 +107,25 @@ class PpoExecutor:
     def update(self):
         rewards = []
         cumulative_discounted_reward = 0.
-        for i in range(len(self.rewards) - 1, 0, -1):
+        for i in range(len(self.rewards) - 1, -1, -1):
             if self.is_terminal[i]:
                 cumulative_discounted_reward = 0.
-            cumulative_discounted_reward = self.rewards[i] + self.discount_factor * cumulative_discounted_reward
+            cumulative_discounted_reward = self.rewards[i] + self.args.discount_factor * cumulative_discounted_reward
             rewards.append(cumulative_discounted_reward)
 
-        rewards = torch.tensor(rewards, dtype=torch.float64, device=self.args.device)
+        rewards = torch.tensor(rewards, dtype=torch.float32, device=self.args.device)
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
 
         prev_states = torch.stack(self.states, dim=0).to(self.args.device)
         prev_actions = torch.stack(self.actions, dim=0).to(self.args.device)
         prev_log_prob_actions = torch.stack(self.log_prob_actions, dim=0).to(self.args.device)
 
-        for ep in range(self.num_epochs):
+        for ep in range(self.args.num_epochs):
             values, log_prob_actions, entropy = self.policy.evaluate(prev_states, prev_actions)
             advantages = rewards - values.detach()
             imp_ratios = torch.exp(log_prob_actions - prev_log_prob_actions)
-            term1 = -torch.min(imp_ratios, torch.clamp(imp_ratios, 1 - self.clip_eps, 1 + self.clip_eps)) * advantages
+            clamped_imp_ratio = torch.clamp(imp_ratios, 1 - self.args.clip_eps, 1 + self.args.clip_eps)
+            term1 = -torch.min(imp_ratios, clamped_imp_ratio) * advantages
             term2 = 0.5 * self.mse_loss(values, rewards)
             term3 = -0.01 * entropy
             loss = term1 + term2 + term3
@@ -129,41 +134,58 @@ class PpoExecutor:
             self.optimizer.step()
 
         self.policy_old.load_state_dict(self.policy.state_dict())
-
-        self.states = []
-        self.actions = []
-        self.log_prob_actions = []
-        self.rewards = []
-        self.is_terminal = []
+        self.reset_buffers()
 
     def run(self):
         t = 1
-        while t <= self.train_steps:
+        success_count = 0
+        finish = False
+        while t <= self.args.train_steps:
             state = self.env.reset()
             total_reward = 0
-            for ep in range(self.max_episode_len):
+            done = False
+            for ep in range(self.args.max_episode_len):
                 state, reward, done = self.take_action(state)
                 total_reward += reward
-                if t % self.update_steps == 0:
+                if self.args.train and t % self.args.update_steps == 0:
+                    logger.info("updating model")
                     self.update()
-                if t % self.checkpoint_steps == 0:
-                    self.save("../out/cartpole")
+                if self.args.train and t % self.args.checkpoint_steps == 0:
+                    logger.info("saving checkpoint")
+                    self.save("../out/cartpole/model.ckpt")
+                t += 1
                 if done:
+                    if total_reward >= 195.0:
+                        success_count += 1
+                        if success_count >= 100:
+                            logger.info("model trained. saving checkpoint")
+                            self.save("../out/cartpole/model.ckpt")
+                            finish = True
+                    else:
+                        success_count = 0
+                    logger.info("iter: {0} | success: {1} | reward: {2:.1f}".format(t, success_count, total_reward))
+                    if not self.args.train:
+                        self.reset_buffers()
                     break
-            logger.info("total reward: {0:.4f}".format(total_reward))
+            if not done:
+                logger.info("truncated at horizon")
+            if finish:
+                break
 
     def save(self, checkpoint_location):
         torch.save(self.policy_old.state_dict(), checkpoint_location)
 
     def load(self, checkpoint_location):
-        self.policy_old.load_save_dict(torch.load(checkpoint_location, map_location=lambda x, y: x))
-        self.policy.load_save_dict(self.policy_old.state_dict())
+        self.policy_old.load_state_dict(torch.load(checkpoint_location, map_location=lambda x, y: x))
+        self.policy.load_state_dict(self.policy_old.state_dict())
 
 
 def main(args):
     setup_logging()
     model_args = parse_config(ModelArguments, args.config)
     executor = PpoExecutor(model_args)
+    if not executor.args.train:
+        executor.load("../out/cartpole/model.ckpt")
     executor.run()
 
 
