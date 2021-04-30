@@ -3,7 +3,6 @@ import logging
 import os
 
 import gym
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -20,7 +19,7 @@ class PolicyModel(nn.Module):
         super(PolicyModel, self).__init__()
         self.args = args
         self.actor = nn.Linear(self.args.state_dim, self.args.num_actions)
-        self.critic = nn.Linear(self.args.state_dim, 1)
+        self.critic = nn.Linear(self.args.state_dim, 1)  # check: whether 1 or 2(num_actions)?
 
     def act(self, state):
         x = self.actor(state)
@@ -46,31 +45,17 @@ class PolicyModel(nn.Module):
         raise NotImplementedError
 
 
-class Discriminator(nn.Module):
-    def __init__(self, args):
-        super(Discriminator, self).__init__()
-        self.args = args
-        self.lin = nn.Linear(self.args.state_dim + self.args.num_actions, 1)
-
-    def forward(self, state_action):
-        x = self.lin(state_action)
-        reward = F.sigmoid(x)
-        return reward
-
-
-class GailExecutor:
+class PpoExecutor:
     def __init__(self, args):
         self.args = args
         self.discount_factor = 0.99
         self.clip_eps = 0.2
         self.lr_actor = 0.0003
         self.lr_critic = 0.001
-        self.lr_discriminator = 0.001
         self.train_steps = int(1e5)
         self.max_episode_len = 400
         self.update_steps = self.max_episode_len * 4
         self.num_epochs = 40
-        self.num_d_epochs = 2
         self.checkpoint_steps = int(2e4)
 
         os.environ["WANDB_MODE"] = self.args.wandb_mode
@@ -86,22 +71,12 @@ class GailExecutor:
         self.policy = PolicyModel(self.args).to(self.args.device)
         self.policy_old = PolicyModel(self.args).to(self.args.device)
         self.policy_old.load_state_dict(self.policy.state_dict())
-        self.discriminator = Discriminator(self.args).to(self.args.device)
 
         self.optimizer = torch.optim.Adam([
             {"params": self.policy.actor.parameters(), "lr": self.lr_actor},
             {"params": self.policy.critic.parameters(), "lr": self.lr_critic}
         ])
-        self.d_optimizer = torch.optim.Adam(self.discriminator.parameters(), lr=self.lr_discriminator)
         self.mse_loss = nn.MSELoss()
-        self.bce_loss = nn.BCELoss()
-
-        expert_states = np.genfromtxt("{0}/observations.csv".format(self.args.expert_trajectory_dir))
-        expert_states = torch.tensor(expert_states, dtype=torch.float32, device=self.args.device)
-        expert_actions = np.genfromtxt("{0}/actions.csv".format(self.args.expert_trajectory_dir), dtype=np.int32)
-        expert_actions = torch.tensor(expert_actions, dtype=torch.int64, device=self.args.device)
-        expert_actions = torch.eye(self.args.num_actions)[expert_actions].to(self.args.device)
-        self.expert_state_actions = torch.cat([expert_states, expert_actions], dim=1)
 
         self.states = []
         self.actions = []
@@ -126,34 +101,20 @@ class GailExecutor:
         return next_state, reward, done
 
     def update(self):
-        prev_states = torch.stack(self.states, dim=0).to(self.args.device)
-        prev_actions = torch.stack(self.actions, dim=0).to(self.args.device)
-        prev_log_prob_actions = torch.stack(self.log_prob_actions, dim=0).to(self.args.device)
-        agent_state_actions = torch.cat([prev_states, prev_actions], dim=1)
-
-        for ep in range(self.num_d_epochs):
-            expert_prob = self.discriminator(self.expert_state_actions)
-            agent_prob = self.discriminator(agent_state_actions)
-            term1 = self.bce_loss(agent_prob, torch.ones((agent_state_actions.shape[0], 1), device=self.args.device))
-            term2 = self.bce_loss(expert_prob, torch.ones((self.expert_state_actions.shape[0], 1),
-                                                          device=self.args.device))
-            loss = term1 + term2
-            self.d_optimizer.zero_grad()
-            loss.backward()
-            self.d_optimizer.step()
-
-        with torch.no_grad():
-            d_rewards = torch.log(self.discriminator(agent_state_actions))
-
-        # d_rewards = np.reshape(d_rewards, newshape=[-1]).astype(dtype=np.float32)   # check!!
         rewards = []
         cumulative_discounted_reward = 0.
-        for i in range(len(d_rewards) - 1, 0, -1):
-            cumulative_discounted_reward = d_rewards[i] + self.discount_factor * cumulative_discounted_reward
+        for i in range(len(self.rewards) - 1, 0, -1):
+            if self.is_terminal[i]:
+                cumulative_discounted_reward = 0.
+            cumulative_discounted_reward = self.rewards[i] + self.discount_factor * cumulative_discounted_reward
             rewards.append(cumulative_discounted_reward)
 
         rewards = torch.tensor(rewards, dtype=torch.float64, device=self.args.device)
         rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-7)
+
+        prev_states = torch.stack(self.states, dim=0).to(self.args.device)
+        prev_actions = torch.stack(self.actions, dim=0).to(self.args.device)
+        prev_log_prob_actions = torch.stack(self.log_prob_actions, dim=0).to(self.args.device)
 
         for ep in range(self.num_epochs):
             values, log_prob_actions, entropy = self.policy.evaluate(prev_states, prev_actions)
@@ -202,12 +163,12 @@ class GailExecutor:
 def main(args):
     setup_logging()
     model_args = parse_config(ModelArguments, args.config)
-    executor = GailExecutor(model_args)
+    executor = PpoExecutor(model_args)
     executor.run()
 
 
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(description="GAIL model")
+    ap = argparse.ArgumentParser(description="PPO for sampling expert trajectories")
     ap.add_argument("--config", default="config/config_debug.json", help="config json file")
     ap = ap.parse_args()
     main(ap)

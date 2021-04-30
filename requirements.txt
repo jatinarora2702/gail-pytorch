@@ -2,3 +2,4 @@ numpy
 dataclasses
 torch
 wandb
+gym

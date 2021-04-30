@@ -3,6 +3,8 @@
   "env_id": "cartpole",
   "resume": null,
   "out_root": "../out",
+  "expert_trajectory_dir": "../trajectory",
   "wandb_mode": "dryrun",
-  "seed": 42
+  "seed": 42,
+  "device": "cuda:0"
 }

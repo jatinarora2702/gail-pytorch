@@ -12,9 +12,11 @@ class ModelArguments:
     model_name: str = field(default="gail", metadata={"help": "model identifier"})
     resume: Optional[str] = field(default=None, metadata={"help": "checkpoint to resume. Starts from scratch, if None"})
     out_root: str = field(default="../out", metadata={"help": "outputs root directory"})
+    expert_trajectory_dir: str = field(default="../trajectory", metadata={"help": "expert tranjectory dir"})
     env_id: str = field(default="cartpole", metadata={"help": "simulation environment identifier"})
     wandb_mode: str = field(default="run", metadata={"help": "can enable/disable wandb online sync (run/dryrun)"})
     seed: int = field(default=42, metadata={"help": "random seed for reproducibility of results"})
+    device: str = field(default="cuda:0", metadata={"help": "device (cpu|cuda:0)"})
 
     def __post_init__(self):
         self.run_root = os.path.join(self.out_root, self.env_id, self.model_name)
