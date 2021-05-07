@@ -1,6 +1,7 @@
 import argparse
 import logging
 import os
+import pickle
 
 import gym
 import torch
@@ -140,11 +141,13 @@ class PpoExecutor:
         t = 1
         success_count = 0
         finish = False
+        record = []
         while t <= self.args.train_steps:
             state = self.env.reset()
             total_reward = 0
             done = False
-            for ep in range(self.args.max_episode_len):
+            ep_len = 0
+            while ep_len < self.args.max_episode_len:
                 state, reward, done = self.take_action(state)
                 total_reward += reward
                 if self.args.train and t % self.args.update_steps == 0:
@@ -154,6 +157,7 @@ class PpoExecutor:
                     logger.info("saving checkpoint")
                     self.save(self.args.checkpoint_dir)
                 t += 1
+                ep_len += 1
                 if done:
                     if total_reward >= self.args.reward_threshold:
                         success_count += 1
@@ -167,10 +171,13 @@ class PpoExecutor:
                     if not self.args.train:
                         self.reset_buffers()
                     break
+            record.append((ep_len, total_reward))
             if not done:
                 logger.info("truncated at horizon")
             if finish:
                 break
+        with open("{0}/record.pkl".format(self.args.checkpoint_dir), "wb") as handle:
+            pickle.dump(record, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     def save(self, checkpoint_dir):
         torch.save(self.policy_old.state_dict(), "{0}/policy.ckpt".format(checkpoint_dir))

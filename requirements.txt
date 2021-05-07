@@ -1,5 +1,7 @@
 numpy
+scipy
 dataclasses
 torch
 wandb
 gym
+matplotlib
