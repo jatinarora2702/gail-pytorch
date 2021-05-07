@@ -13,7 +13,7 @@
   "update_steps": 1600,
   "checkpoint_steps": 1600,
   "num_epochs": 40,
-  "out_root": "../out",
+  "out_root": "../pretrained",
   "expert_trajectory_dir": "../trajectory",
   "wandb_mode": "dryrun",
   "seed": 42,

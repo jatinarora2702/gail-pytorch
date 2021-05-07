@@ -5,7 +5,6 @@
   "num_trajectories": 25,
   "max_episode_len": 400,
   "out_root": "../out",
-  "expert_trajectory_dir": "../trajectory",
   "wandb_mode": "dryrun",
   "seed": 42,
   "device": "cuda:0"

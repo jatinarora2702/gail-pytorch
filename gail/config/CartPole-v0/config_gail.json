@@ -15,8 +15,7 @@
   "checkpoint_steps": 1600,
   "num_epochs": 40,
   "num_d_epochs": 2,
-  "out_root": "../out",
-  "expert_trajectory_dir": "../trajectory",
+  "out_root": "../pretrained",
   "wandb_mode": "dryrun",
   "seed": 42,
   "device": "cuda:0"
