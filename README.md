@@ -48,9 +48,7 @@ python visualize.py --env_id CartPole-v0 --out_dir ../pretrained --model_name ga
 
 ## Cartpole-v0 Experiment
 
-![cartpole ppo training](./pretrained/CartPole-v0/ppo/rewards_ppo.png)
-
-![cartpole ppo training](./pretrained/CartPole-v0/gail/rewards_gail.png)
+<img src="./pretrained/CartPole-v0/ppo/rewards_ppo.png" width="50%"><img src="./pretrained/CartPole-v0/gail/rewards_gail.png" width="50%">
 
 ## References
 
@@ -72,7 +70,7 @@ Jatin Arora
 
 University Mail: [jatin2@illinois.edu](mailto:jatin2@illinois.edu)
 
-External Mail: [jatinarora2702@gmail.com](mailto:jatin2@illinois.edu)
+External Mail: [jatinarora2702@gmail.com](mailto:jatinarora2702@gmail.com)
 
 LinkedIn: [linkedin.com/in/jatinarora2702](https://www.linkedin.com/in/jatinarora2702)
  
