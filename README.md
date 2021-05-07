@@ -57,6 +57,8 @@ python visualize.py --env_id CartPole-v0 --out_dir ../pretrained --model_name ga
 3. [Medium: Article on GAIL](https://medium.com/@sanketgujar95/generative-adversarial-imitation-learning-266f45634e60)
 4. [Blog post on PPO algorithm](https://towardsdatascience.com/proximal-policy-optimization-tutorial-part-1-actor-critic-method-d53f9afffbf6)
 5. [White Paper on MCE IRL](https://apps.dtic.mil/sti/pdfs/AD1090741.pdf)
+6. [Blog post on PPO](https://jonathan-hui.medium.com/rl-proximal-policy-optimization-ppo-explained-77f014ec3f12)
+7. [Blog post on TRPO](https://jonathan-hui.medium.com/rl-trust-region-policy-optimization-trpo-explained-a6ee04eeeee9)
 
 ## Acknowledgements
 
